@@ -10,9 +10,15 @@ const TILLO_API_URL = 'https://sandbox.tillo.dev/api/v2/digital/issue';
 
 // Utility function to generate signature string and hash it
 const generateSignature = (clientRequestId, brand, amount, currency, timestamp) => {
+  // For debugging
+  console.log('Environment variables:', {
+    apiKey: process.env.APIKEY, // Changed from API-Key to APIKEY
+    hasSecret: !!process.env.SECRET
+  });
+
   // Format: [api_key]-POST-digital-issue-[client_request_id]-[brand]-[amount]-[currency]-[timestamp]
-  const signatureString = `${process.env['API-Key']}-POST-digital-issue-${clientRequestId}-${brand}-${amount}-${currency}-${timestamp}`;
-  console.log('Generated signature string:', signatureString); // For debugging
+  const signatureString = `${process.env.APIKEY}-POST-digital-issue-${clientRequestId}-${brand}-${amount}-${currency}-${timestamp}`;
+  console.log('Generated signature string:', signatureString);
   
   return crypto
     .createHmac('sha256', process.env.SECRET)
@@ -81,7 +87,7 @@ app.post('/api/issue-gift-card', validateRequest, async (req, res) => {
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'API-Key': process.env['API-Key'],
+        'API-Key': process.env.APIKEY,  // Changed from API-Key to APIKEY
         'Signature': signature,
         'Timestamp': timestamp
       },
