@@ -6,13 +6,16 @@ require('dotenv').config();
 const app = express();
 app.use(express.json());
 
-// Utility function to generate HMAC signature based on Tillo's requirements
-const generateSignature = (apiKey, method, endpoint, clientRequestId, brand, amount, currency, timestamp) => {
+const TILLO_API_URL = 'https://sandbox.tillo.dev/api/v2/digital/issue';
+
+// Utility function to generate signature string and hash it
+const generateSignature = (clientRequestId, brand, amount, currency, timestamp) => {
   // Format: [api_key]-POST-digital-issue-[client_request_id]-[brand]-[amount]-[currency]-[timestamp]
-  const signatureString = `${apiKey}-${method}-${endpoint}-${clientRequestId}-${brand}-${amount}-${currency}-${timestamp}`;
+  const signatureString = `${process.env['API-Key']}-POST-digital-issue-${clientRequestId}-${brand}-${amount}-${currency}-${timestamp}`;
   console.log('Generated signature string:', signatureString); // For debugging
+  
   return crypto
-    .createHmac('sha256', process.env.SIGNATURE_SECRET)
+    .createHmac('sha256', process.env.SECRET)
     .update(signatureString)
     .digest('hex');
 };
@@ -47,9 +50,6 @@ app.post('/api/issue-gift-card', validateRequest, async (req, res) => {
 
     // Generate signature according to Tillo's format
     const signature = generateSignature(
-      process.env.API_KEY,
-      'POST',
-      'digital-issue',
       clientRequestId,
       Array.isArray(brandIdentifier) ? brandIdentifier[0] : brandIdentifier,
       amount,
@@ -77,11 +77,11 @@ app.post('/api/issue-gift-card', validateRequest, async (req, res) => {
     // Make request to Tillo with exact headers they specify
     const tilloResponse = await axios({
       method: 'post',
-      url: process.env.API_URL,
+      url: TILLO_API_URL,
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'API-Key': process.env.API_KEY,
+        'API-Key': process.env['API-Key'],
         'Signature': signature,
         'Timestamp': timestamp
       },
