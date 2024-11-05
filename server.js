@@ -10,15 +10,21 @@ const TILLO_API_URL = 'https://sandbox.tillo.dev/api/v2/digital/issue';
 
 // Utility function to generate signature string and hash it
 const generateSignature = (clientRequestId, brand, amount, currency, timestamp) => {
-  // For debugging
-  console.log('Environment variables:', {
-    apiKey: process.env.APIKEY, // Changed from API-Key to APIKEY
-    hasSecret: !!process.env.SECRET
+  // Format EXACTLY as per Tillo docs:
+  // [api_key]-POST-digital-issue-[client_request_id]-[brand]-[amount]-[currency]-[timestamp]
+  
+  // Ensure amount is a number with no decimal places if it's a whole number
+  const formattedAmount = Number.isInteger(amount) ? amount.toString() : amount.toString();
+  
+  const signatureString = `${process.env.APIKEY}-POST-digital-issue-${clientRequestId}-${brand}-${formattedAmount}-${currency}-${timestamp}`;
+  
+  // Log for debugging
+  console.log({
+    signatureString,
+    timestamp,
+    apiKeyPresent: !!process.env.APIKEY,
+    secretPresent: !!process.env.SECRET
   });
-
-  // Format: [api_key]-POST-digital-issue-[client_request_id]-[brand]-[amount]-[currency]-[timestamp]
-  const signatureString = `${process.env.APIKEY}-POST-digital-issue-${clientRequestId}-${brand}-${amount}-${currency}-${timestamp}`;
-  console.log('Generated signature string:', signatureString);
   
   return crypto
     .createHmac('sha256', process.env.SECRET)
@@ -26,21 +32,8 @@ const generateSignature = (clientRequestId, brand, amount, currency, timestamp) 
     .digest('hex');
 };
 
-// Validate required fields middleware
-const validateRequest = (req, res, next) => {
-  const { amount, brandIdentifier, clientRequestId } = req.body;
-
-  if (!amount || !brandIdentifier || !clientRequestId) {
-    return res.status(400).json({
-      error: 'Missing required fields',
-      required: ['amount', 'brandIdentifier', 'clientRequestId']
-    });
-  }
-  next();
-};
-
 // Main endpoint for gift card issuance
-app.post('/api/issue-gift-card', validateRequest, async (req, res) => {
+app.post('/api/issue-gift-card', async (req, res) => {
   try {
     const timestamp = Date.now().toString();
     const {
@@ -54,7 +47,15 @@ app.post('/api/issue-gift-card', validateRequest, async (req, res) => {
       fulfilmentParameters
     } = req.body;
 
-    // Generate signature according to Tillo's format
+    // Log request details for debugging
+    console.log('Request details:', {
+      amount,
+      brandIdentifier,
+      clientRequestId,
+      currency,
+      timestamp
+    });
+
     const signature = generateSignature(
       clientRequestId,
       Array.isArray(brandIdentifier) ? brandIdentifier[0] : brandIdentifier,
@@ -63,7 +64,9 @@ app.post('/api/issue-gift-card', validateRequest, async (req, res) => {
       timestamp
     );
 
-    // Construct request to Tillo
+    // Log generated signature
+    console.log('Generated signature:', signature);
+
     const tilloRequest = {
       client_request_id: clientRequestId,
       choices: Array.isArray(brandIdentifier) ? brandIdentifier : [brandIdentifier],
@@ -80,14 +83,24 @@ app.post('/api/issue-gift-card', validateRequest, async (req, res) => {
       tilloRequest.fulfilment_parameters = fulfilmentParameters;
     }
 
-    // Make request to Tillo with exact headers they specify
+    // Log the full request to Tillo
+    console.log('Tillo request:', {
+      url: TILLO_API_URL,
+      headers: {
+        'API-Key': process.env.APIKEY,
+        'Signature': signature,
+        'Timestamp': timestamp
+      },
+      body: tilloRequest
+    });
+
     const tilloResponse = await axios({
       method: 'post',
       url: TILLO_API_URL,
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'API-Key': process.env.APIKEY,  // Changed from API-Key to APIKEY
+        'API-Key': process.env.APIKEY,
         'Signature': signature,
         'Timestamp': timestamp
       },
@@ -97,7 +110,12 @@ app.post('/api/issue-gift-card', validateRequest, async (req, res) => {
     res.json(tilloResponse.data);
 
   } catch (error) {
-    console.error('Error:', error.response?.data || error.message);
+    console.error('Error details:', {
+      response: error.response?.data,
+      status: error.response?.status,
+      headers: error.response?.headers
+    });
+    
     res.status(error.response?.status || 500).json({
       error: 'Failed to process gift card request',
       details: error.response?.data || error.message
@@ -105,7 +123,6 @@ app.post('/api/issue-gift-card', validateRequest, async (req, res) => {
   }
 });
 
-// Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
